@@ -32,6 +32,7 @@ pub struct BufferedQueue<T> {
 }
 
 impl<T> BufferedQueue<T> {
+    /// returns a new BufferedQueue instance with apt defaults
     pub fn new(capacity: usize) -> Self {
         Self {
             data: Mutex::new(VecDeque::with_capacity(capacity)),
@@ -73,6 +74,7 @@ impl<T> BufferedQueue<T> {
         popped_element
     }
 
+    /// passes signals regarding the queue's state to the threads based on the most-recent operation type
     fn signal_to_threads(&self, queue: MutexGuard<'_, VecDeque<T>>, operation: Operation) {
         let order = Ordering::Relaxed;
 
