@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Condvar, Mutex, MutexGuard};
 
 /// Operation represents the performed operation on the queue -- push or pop
 enum Operation {
@@ -16,18 +16,24 @@ enum Operation {
 /// consumption.
 pub struct BufferedQueue<T> {
     /// represents the internal queue implementation, wrapped in a mutex
-    pub data: Mutex<VecDeque<T>>,
+    data: Mutex<VecDeque<T>>,
 
     /// represents the maximum number of elements allowed in the queue at a given time
     capacity: usize,
 
-    /// signals to the producer thread that the queue is full
-    pub is_full_: AtomicBool,
+    /// indicates whether the queue is full
+    pub is_full: Mutex<bool>,
 
-    /// signals to the consumer thread that the queue is empty
-    pub is_empty_: AtomicBool,
+    /// signals to producer threads that the queue is full
+    pub is_full_signal: Condvar,
 
-    /// signals termination for the consumer thread
+    /// indicates whether the queue is empty
+    pub is_empty: Mutex<bool>,
+
+    /// signals to consumer threads that the queue is empty
+    pub is_empty_signal: Condvar,
+
+    /// signals that the producer queue has processed all its data
     pub elements_processed: AtomicBool,
 }
 
@@ -37,8 +43,10 @@ impl<T> BufferedQueue<T> {
         Self {
             data: Mutex::new(VecDeque::with_capacity(capacity)),
             capacity,
-            is_full_: AtomicBool::new(false),
-            is_empty_: AtomicBool::new(true),
+            is_full: Mutex::new(false),
+            is_empty: Mutex::new(true),
+            is_full_signal: Condvar::new(),
+            is_empty_signal: Condvar::new(),
             elements_processed: AtomicBool::new(false),
         }
     }
@@ -58,6 +66,7 @@ impl<T> BufferedQueue<T> {
 
             Some(mut queue) => {
                 queue.push_back(value);
+                println!("pushed element");
                 self.signal_to_threads(queue, Operation::Push);
                 true
             }
@@ -69,6 +78,7 @@ impl<T> BufferedQueue<T> {
     pub fn pop(&self) -> Option<T> {
         let mut queue = self.data.lock().unwrap();
         let popped_element = queue.pop_front();
+        println!("popped element");
 
         self.signal_to_threads(queue, Operation::Pop);
         popped_element
@@ -76,33 +86,49 @@ impl<T> BufferedQueue<T> {
 
     /// passes signals regarding the queue's state to the threads based on the most-recent operation type
     fn signal_to_threads(&self, queue: MutexGuard<'_, VecDeque<T>>, operation: Operation) {
-        let order = Ordering::Relaxed;
-
         let is_empty = queue.len() == 0;
         let is_full = queue.len() == self.capacity;
 
         match operation {
             //  push => (empty -> false, full -> true?)
             Operation::Push => {
-                // only update state if queue was previously empty
-                if self.is_empty_.load(order) {
-                    self.is_empty_.store(false, order);
-                };
+                let mut is_empty_flag = self.is_empty.lock().unwrap();
+                if *is_empty_flag {
+                    *is_empty_flag = false;
+                    println!("set is_empty to false");
+                    self.is_empty_signal.notify_all();
+                } else {
+                    println!();
+                }
 
                 if is_full {
-                    self.is_full_.store(true, order);
-                };
+                    let mut is_full_flag = self.is_full.lock().unwrap();
+                    *is_full_flag = true;
+                    self.is_full_signal.notify_all();
+                    println!("set is_full to true");
+                } else {
+                    println!();
+                }
             }
 
             // pop => (empty -> true?, full -> false)
             Operation::Pop => {
-                // only update state if queue was previously full
-                if self.is_full_.load(order) {
-                    self.is_full_.store(false, order);
-                };
+                let mut is_full_flag = self.is_full.lock().unwrap();
+                if *is_full_flag {
+                    *is_full_flag = false;
+                    println!("set is_full to false");
+                    self.is_full_signal.notify_all();
+                } else {
+                    println!();
+                }
 
                 if is_empty {
-                    self.is_empty_.store(true, order);
+                    let mut is_empty_flag = self.is_empty.lock().unwrap();
+                    *is_empty_flag = true;
+                    self.is_empty_signal.notify_all();
+                    println!("set is_empty to true");
+                } else {
+                    println!();
                 }
             }
         }
