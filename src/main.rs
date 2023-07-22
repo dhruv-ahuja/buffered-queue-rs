@@ -1,6 +1,4 @@
-pub mod queue;
-
-use queue::BufferedQueue;
+use buffered_queue_rs::BufferedQueue;
 use std::{
     sync::{atomic::Ordering, Arc, Mutex},
     thread::{self, sleep},
