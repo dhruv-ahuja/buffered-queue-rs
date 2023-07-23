@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard};
 
 /// Operation represents the performed operation on the queue -- push or pop
@@ -52,7 +52,7 @@ impl<T> BufferedQueue<T> {
     }
 
     /// ensures that the calling function acquires the mutex guard only if the queue has space
-    fn ensure_has_space(&self) -> Option<MutexGuard<'_, VecDeque<T>>> {
+    fn _ensure_has_space(&self) -> Option<MutexGuard<'_, VecDeque<T>>> {
         let queue = self.data.lock().unwrap();
         println!("queue has space");
         (queue.len() != self.capacity).then_some(queue)
@@ -60,22 +60,31 @@ impl<T> BufferedQueue<T> {
 
     /// pushes an element to the back of the queue, returning `true` to indicate whether the operation was
     /// successful if the queue had space else `false`
-    pub fn push(&self, value: T) -> bool {
-        match self.ensure_has_space() {
-            None => false,
-
-            Some(mut queue) => {
-                queue.push_back(value);
-                println!("pushed element");
-                self.signal_to_threads(queue, Operation::Push);
-                true
-            }
+    pub fn push(&self, value: T) {
+        let mut queue_is_full = self.is_full.lock().unwrap();
+        while *queue_is_full {
+            queue_is_full = self.is_full_signal.wait(queue_is_full).unwrap();
         }
+        drop(queue_is_full);
+
+        let mut queue = self.data.lock().unwrap();
+        queue.push_back(value);
+        println!("pushed element");
+        self.signal_to_threads(queue, Operation::Push);
     }
 
     /// pops an element from the queue and returns the output -- `Some(T)` in case of elements being present in the
     /// queue, else `None`
     pub fn pop(&self) -> Option<T> {
+        let mut queue_is_empty = self.is_empty.lock().unwrap();
+        while *queue_is_empty {
+            if self.elements_processed.load(Ordering::SeqCst) {
+                return None;
+            }
+            queue_is_empty = self.is_empty_signal.wait(queue_is_empty).unwrap();
+        }
+        drop(queue_is_empty);
+
         let mut queue = self.data.lock().unwrap();
         let popped_element = queue.pop_front();
         println!("popped element");
