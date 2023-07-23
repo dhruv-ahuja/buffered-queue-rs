@@ -8,9 +8,7 @@ use std::{
 fn main() {
     let order = Ordering::SeqCst;
 
-    let queue: Arc<BufferedQueue<i32>> = Arc::new(BufferedQueue::new(3));
-    let consumer_queue = queue.clone();
-
+    let (producer, consumer) = BufferedQueue::new(3);
     let output = Arc::new(Mutex::new(Vec::new()));
 
     let producer_handle = thread::spawn(move || {
@@ -21,9 +19,9 @@ fn main() {
             let processed_num = num * num * num;
             sleep(Duration::from_millis(250));
 
-            queue.push(processed_num);
+            producer.push(processed_num);
         }
-        queue.elements_processed.store(true, order);
+        producer.elements_processed.store(true, order);
     });
 
     let consumer_handle = thread::spawn(move || {
@@ -31,7 +29,7 @@ fn main() {
         let mut output_vec = output.lock().unwrap();
 
         loop {
-            match consumer_queue.pop() {
+            match consumer.pop() {
                 None => {
                     println!("exhausted queue, terminating consumer!\n");
                     return;

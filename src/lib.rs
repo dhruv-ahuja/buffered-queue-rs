@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 /// Operation represents the performed operation on the queue -- push or pop
 enum Operation {
@@ -38,9 +38,9 @@ pub struct BufferedQueue<T> {
 }
 
 impl<T> BufferedQueue<T> {
-    /// returns a new BufferedQueue instance with apt defaults
-    pub fn new(capacity: usize) -> Self {
-        Self {
+    /// returns producer and consumer BufferedQueue implementations
+    pub fn new(capacity: usize) -> (Arc<BufferedQueue<T>>, Arc<BufferedQueue<T>>) {
+        let data = Self {
             data: Mutex::new(VecDeque::with_capacity(capacity)),
             capacity,
             is_full: Mutex::new(false),
@@ -48,7 +48,10 @@ impl<T> BufferedQueue<T> {
             is_full_signal: Condvar::new(),
             is_empty_signal: Condvar::new(),
             elements_processed: AtomicBool::new(false),
-        }
+        };
+        let producer = Arc::new(data);
+        let consumer = producer.clone();
+        (producer, consumer)
     }
 
     /// ensures that the calling function acquires the mutex guard only if the queue has space
