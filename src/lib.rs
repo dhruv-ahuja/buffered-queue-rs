@@ -73,6 +73,15 @@ impl<T> BufferedQueue<T> {
         );
     }
 
+    // disabling this as we do not need an `is_empty` method in our case
+    #[allow(clippy::len_without_is_empty)]
+
+    /// returns the queue's current length
+    pub fn len(&self) -> usize {
+        let queue = self.data.lock().unwrap();
+        queue.len()
+    }
+
     /// pops an element from the queue and returns the output -- `Some(T)` in case of elements being present in the
     /// queue, else `None`
     pub fn pop(&self) -> Option<T> {
