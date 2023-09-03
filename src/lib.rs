@@ -65,7 +65,7 @@ impl<T> BufferedQueue<T> {
         let mut queue = self.data.lock().unwrap();
         queue.push_back(value);
         println!("pushed element");
-        self.signal_to_threads(
+        self.signal_queue_changes(
             queue,
             Operation::Push {
                 is_full_flag: queue_is_full,
@@ -88,7 +88,7 @@ impl<T> BufferedQueue<T> {
         let popped_element = queue.pop_front();
         println!("popped element");
 
-        self.signal_to_threads(
+        self.signal_queue_changes(
             queue,
             Operation::Pop {
                 is_empty_flag: queue_is_empty,
@@ -97,8 +97,8 @@ impl<T> BufferedQueue<T> {
         popped_element
     }
 
-    /// passes signals regarding the queue's state to the threads based on the most-recent operation type
-    fn signal_to_threads(&self, queue: MutexGuard<'_, VecDeque<T>>, operation: Operation) {
+    /// passes signals regarding the changes to tge queue's state, based on the recent operation type
+    fn signal_queue_changes(&self, queue: MutexGuard<'_, VecDeque<T>>, operation: Operation) {
         let is_empty = queue.len() == 0;
         let is_full = queue.len() == self.capacity;
 
