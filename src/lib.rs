@@ -137,16 +137,3 @@ impl<T> BufferedQueue<T> {
         }
     }
 }
-
-impl<T> Drop for BufferedQueue<T> {
-    fn drop(self: &mut BufferedQueue<T>) {
-        let order = Ordering::SeqCst;
-
-        // send the signal for the all elements being processed, if it hasn't already been sent
-        // the producer will send this signal on going out of scope
-        if !self.elements_processed.load(order) {
-            self.elements_processed.store(true, order);
-            println!("SENT ELEMENTS PROCESSED SIGNAL!");
-        }
-    }
-}

@@ -1,18 +1,16 @@
 use buffered_queue_rs::BufferedQueue;
-use std::{
-    sync::{atomic::Ordering, Arc, Mutex},
-    thread::{self, sleep},
-    time::Duration,
-};
+use std::sync::atomic::Ordering;
+use std::thread::{self, sleep};
+use std::time::Duration;
 
 fn main() {
     let order = Ordering::SeqCst;
 
     let (producer, consumer) = BufferedQueue::new(3);
-    let output = Arc::new(Mutex::new(Vec::new()));
+    let mut output = Vec::new();
 
     let producer_handle = thread::spawn(move || {
-        println!("initializing producer thread...\n");
+        println!("initializing producer thread...");
 
         for num in 1..=10 {
             // mock processing of the input data
@@ -25,31 +23,27 @@ fn main() {
     });
 
     let consumer_handle = thread::spawn(move || {
-        println!("initializing consumer thread...\n");
-        let mut output_vec = output.lock().unwrap();
+        println!("initializing consumer thread...");
 
         loop {
-            match consumer.pop() {
-                None => {
+            let Some(num) = consumer.pop() else {
                     println!("exhausted queue, terminating consumer!\n");
                     return;
-                }
+            };
 
-                Some(num) => {
-                    // mock consumption of processed data
-                    sleep(Duration::from_millis(400));
+            // mock consumption of processed data
+            sleep(Duration::from_millis(400));
 
-                    output_vec.push(num);
-                    println!(
-                        "pushed to output num: {}; output_vec len: {}",
-                        num,
-                        output_vec.len()
-                    );
-                }
-            }
+            output.push(num);
+
+            println!(
+                "pushed to output num: {}; output_vec len: {}",
+                num,
+                output.len()
+            );
         }
     });
 
-    consumer_handle.join().unwrap();
     producer_handle.join().unwrap();
+    consumer_handle.join().unwrap();
 }
