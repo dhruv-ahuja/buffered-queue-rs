@@ -8,6 +8,77 @@ enum Operation<'a> {
     Pop { is_empty_flag: MutexGuard<'a, bool> },
 }
 
+pub struct Producer<T>(Arc<BufferedQueue<T>>);
+
+impl<T> Producer<T> {
+    /// pushes an element to the back of the queue, returning `true` to indicate whether the operation was
+    /// successful if the queue had space else `false`
+    pub fn push(&self, value: T) {
+        let mut queue_is_full = self.0.is_full.lock().unwrap();
+        while *queue_is_full {
+            queue_is_full = self.0.is_full_signal.wait(queue_is_full).unwrap();
+        }
+
+        let mut queue = self.0.data.lock().unwrap();
+        queue.push_back(value);
+        println!("pushed element");
+        self.0.signal_queue_changes(
+            queue,
+            Operation::Push {
+                is_full_flag: queue_is_full,
+            },
+        );
+    }
+
+    #[allow(clippy::len_without_is_empty)]
+    /// returns the queue's current length
+    pub fn len(&self) -> usize {
+        let queue = self.0.data.lock().unwrap();
+        queue.len()
+    }
+}
+
+impl<T> Drop for Producer<T> {
+    fn drop(&mut self) {
+        self.0.elements_processed.store(true, Ordering::SeqCst);
+    }
+}
+
+pub struct Consumer<T>(Arc<BufferedQueue<T>>);
+
+impl<T> Consumer<T> {
+    /// pops an element from the queue and returns the output -- `Some(T)` in case of elements being present in the
+    /// queue, else `None`
+    pub fn pop(&self) -> Option<T> {
+        let mut queue_is_empty = self.0.is_empty.lock().unwrap();
+        while *queue_is_empty {
+            if self.0.elements_processed.load(Ordering::SeqCst) {
+                return None;
+            }
+            queue_is_empty = self.0.is_empty_signal.wait(queue_is_empty).unwrap();
+        }
+
+        let mut queue = self.0.data.lock().unwrap();
+        let popped_element = queue.pop_front();
+        println!("popped element");
+
+        self.0.signal_queue_changes(
+            queue,
+            Operation::Pop {
+                is_empty_flag: queue_is_empty,
+            },
+        );
+        popped_element
+    }
+
+    #[allow(clippy::len_without_is_empty)]
+    /// returns the queue's current length
+    pub fn len(&self) -> usize {
+        let queue = self.0.data.lock().unwrap();
+        queue.len()
+    }
+}
+
 /// BufferedQueue is a queue implementation with a pre-defined maximum capacity, for workloads where one part of the
 ///  pipeline is faster than other parts and processes tasks much faster than the other parts' consumption ability.
 ///
@@ -37,75 +108,24 @@ pub struct BufferedQueue<T> {
     pub elements_processed: AtomicBool,
 }
 
+/// returns Producer and Consumer halves for a BufferedQueue with the specified capacity
+pub fn buffered_queue<T>(capacity: usize) -> (Producer<T>, Consumer<T>) {
+    let data = BufferedQueue {
+        data: Mutex::new(VecDeque::with_capacity(capacity)),
+        capacity,
+        is_full: Mutex::new(false),
+        is_empty: Mutex::new(true),
+        is_full_signal: Condvar::new(),
+        is_empty_signal: Condvar::new(),
+        elements_processed: AtomicBool::new(false),
+    };
+    let data = Arc::new(data);
+    let producer = Producer(data.clone());
+    let consumer = Consumer(data);
+    (producer, consumer)
+}
+
 impl<T> BufferedQueue<T> {
-    /// returns producer and consumer BufferedQueue implementations
-    pub fn new(capacity: usize) -> (Arc<BufferedQueue<T>>, Arc<BufferedQueue<T>>) {
-        let data = Self {
-            data: Mutex::new(VecDeque::with_capacity(capacity)),
-            capacity,
-            is_full: Mutex::new(false),
-            is_empty: Mutex::new(true),
-            is_full_signal: Condvar::new(),
-            is_empty_signal: Condvar::new(),
-            elements_processed: AtomicBool::new(false),
-        };
-        let producer = Arc::new(data);
-        let consumer = producer.clone();
-        (producer, consumer)
-    }
-
-    /// pushes an element to the back of the queue, returning `true` to indicate whether the operation was
-    /// successful if the queue had space else `false`
-    pub fn push(&self, value: T) {
-        let mut queue_is_full = self.is_full.lock().unwrap();
-        while *queue_is_full {
-            queue_is_full = self.is_full_signal.wait(queue_is_full).unwrap();
-        }
-
-        let mut queue = self.data.lock().unwrap();
-        queue.push_back(value);
-        println!("pushed element");
-        self.signal_queue_changes(
-            queue,
-            Operation::Push {
-                is_full_flag: queue_is_full,
-            },
-        );
-    }
-
-    // disabling this as we do not need an `is_empty` method in our case
-    #[allow(clippy::len_without_is_empty)]
-
-    /// returns the queue's current length
-    pub fn len(&self) -> usize {
-        let queue = self.data.lock().unwrap();
-        queue.len()
-    }
-
-    /// pops an element from the queue and returns the output -- `Some(T)` in case of elements being present in the
-    /// queue, else `None`
-    pub fn pop(&self) -> Option<T> {
-        let mut queue_is_empty = self.is_empty.lock().unwrap();
-        while *queue_is_empty {
-            if self.elements_processed.load(Ordering::SeqCst) {
-                return None;
-            }
-            queue_is_empty = self.is_empty_signal.wait(queue_is_empty).unwrap();
-        }
-
-        let mut queue = self.data.lock().unwrap();
-        let popped_element = queue.pop_front();
-        println!("popped element");
-
-        self.signal_queue_changes(
-            queue,
-            Operation::Pop {
-                is_empty_flag: queue_is_empty,
-            },
-        );
-        popped_element
-    }
-
     /// passes signals regarding the changes to tge queue's state, based on the recent operation type
     fn signal_queue_changes(&self, queue: MutexGuard<'_, VecDeque<T>>, operation: Operation) {
         let is_empty = queue.len() == 0;

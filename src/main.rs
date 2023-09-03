@@ -1,12 +1,9 @@
-use buffered_queue_rs::BufferedQueue;
-use std::sync::atomic::Ordering;
+use buffered_queue_rs::buffered_queue;
 use std::thread::{self, sleep};
 use std::time::Duration;
 
 fn main() {
-    let order = Ordering::SeqCst;
-
-    let (producer, consumer) = BufferedQueue::new(3);
+    let (producer, consumer) = buffered_queue(3);
     let mut output = Vec::new();
 
     let producer_handle = thread::spawn(move || {
@@ -19,7 +16,6 @@ fn main() {
 
             producer.push(processed_num);
         }
-        producer.elements_processed.store(true, order);
     });
 
     let consumer_handle = thread::spawn(move || {
