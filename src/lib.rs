@@ -54,13 +54,6 @@ impl<T> BufferedQueue<T> {
         (producer, consumer)
     }
 
-    /// ensures that the calling function acquires the mutex guard only if the queue has space
-    fn _ensure_has_space(&self) -> Option<MutexGuard<'_, VecDeque<T>>> {
-        let queue = self.data.lock().unwrap();
-        println!("queue has space");
-        (queue.len() != self.capacity).then_some(queue)
-    }
-
     /// pushes an element to the back of the queue, returning `true` to indicate whether the operation was
     /// successful if the queue had space else `false`
     pub fn push(&self, value: T) {
@@ -109,8 +102,6 @@ impl<T> BufferedQueue<T> {
                     *is_empty_flag = false;
                     println!("set is_empty to false");
                     self.is_empty_signal.notify_all();
-                } else {
-                    println!();
                 }
 
                 if is_full {
@@ -118,8 +109,6 @@ impl<T> BufferedQueue<T> {
                     *is_full_flag = true;
                     self.is_full_signal.notify_all();
                     println!("set is_full to true");
-                } else {
-                    println!();
                 }
             }
 
@@ -130,8 +119,6 @@ impl<T> BufferedQueue<T> {
                     *is_full_flag = false;
                     println!("set is_full to false");
                     self.is_full_signal.notify_all();
-                } else {
-                    println!();
                 }
 
                 if is_empty {
@@ -139,10 +126,21 @@ impl<T> BufferedQueue<T> {
                     *is_empty_flag = true;
                     self.is_empty_signal.notify_all();
                     println!("set is_empty to true");
-                } else {
-                    println!();
                 }
             }
+        }
+    }
+}
+
+impl<T> Drop for BufferedQueue<T> {
+    fn drop(self: &mut BufferedQueue<T>) {
+        let order = Ordering::SeqCst;
+
+        // send the signal for the all elements being processed, if it hasn't already been sent
+        // the producer will send this signal on going out of scope
+        if !self.elements_processed.load(order) {
+            self.elements_processed.store(true, order);
+            println!("SENT ELEMENTS PROCESSED SIGNAL!");
         }
     }
 }
