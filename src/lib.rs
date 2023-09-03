@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 /// Operation represents the performed operation on the queue -- push or pop
-enum Operation {
-    Push,
-    Pop,
+enum Operation<'a> {
+    Push { is_full_flag: MutexGuard<'a, bool> },
+    Pop { is_empty_flag: MutexGuard<'a, bool> },
 }
 
 /// BufferedQueue is a queue implementation with a pre-defined maximum capacity, for workloads where one part of the
@@ -61,12 +61,16 @@ impl<T> BufferedQueue<T> {
         while *queue_is_full {
             queue_is_full = self.is_full_signal.wait(queue_is_full).unwrap();
         }
-        drop(queue_is_full);
 
         let mut queue = self.data.lock().unwrap();
         queue.push_back(value);
         println!("pushed element");
-        self.signal_to_threads(queue, Operation::Push);
+        self.signal_to_threads(
+            queue,
+            Operation::Push {
+                is_full_flag: queue_is_full,
+            },
+        );
     }
 
     /// pops an element from the queue and returns the output -- `Some(T)` in case of elements being present in the
@@ -79,13 +83,17 @@ impl<T> BufferedQueue<T> {
             }
             queue_is_empty = self.is_empty_signal.wait(queue_is_empty).unwrap();
         }
-        drop(queue_is_empty);
 
         let mut queue = self.data.lock().unwrap();
         let popped_element = queue.pop_front();
         println!("popped element");
 
-        self.signal_to_threads(queue, Operation::Pop);
+        self.signal_to_threads(
+            queue,
+            Operation::Pop {
+                is_empty_flag: queue_is_empty,
+            },
+        );
         popped_element
     }
 
@@ -96,7 +104,7 @@ impl<T> BufferedQueue<T> {
 
         match operation {
             //  push => (empty -> false, full -> true?)
-            Operation::Push => {
+            Operation::Push { mut is_full_flag } => {
                 let mut is_empty_flag = self.is_empty.lock().unwrap();
                 if *is_empty_flag {
                     *is_empty_flag = false;
@@ -105,7 +113,6 @@ impl<T> BufferedQueue<T> {
                 }
 
                 if is_full {
-                    let mut is_full_flag = self.is_full.lock().unwrap();
                     *is_full_flag = true;
                     self.is_full_signal.notify_all();
                     println!("set is_full to true");
@@ -113,7 +120,7 @@ impl<T> BufferedQueue<T> {
             }
 
             // pop => (empty -> true?, full -> false)
-            Operation::Pop => {
+            Operation::Pop { mut is_empty_flag } => {
                 let mut is_full_flag = self.is_full.lock().unwrap();
                 if *is_full_flag {
                     *is_full_flag = false;
@@ -122,7 +129,6 @@ impl<T> BufferedQueue<T> {
                 }
 
                 if is_empty {
-                    let mut is_empty_flag = self.is_empty.lock().unwrap();
                     *is_empty_flag = true;
                     self.is_empty_signal.notify_all();
                     println!("set is_empty to true");
