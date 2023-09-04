@@ -109,11 +109,13 @@ pub struct BufferedQueue<T> {
 }
 
 /// returns Producer and Consumer halves for a BufferedQueue with the specified capacity
-pub fn buffered_queue<T>(capacity: usize) -> (Producer<T>, Consumer<T>) {
+pub fn buffered_queue<T>(mut capacity: usize) -> (Producer<T>, Consumer<T>) {
     if capacity < 1 {
-        panic!("capacity cannot be lower than 1!");
+        eprintln!("capacity cannot be lower than 1, defaulting to 1...");
+        capacity = 1
     }
-    let data = BufferedQueue {
+
+    let buffered_queue = BufferedQueue {
         data: Mutex::new(VecDeque::with_capacity(capacity)),
         capacity,
         is_full: Mutex::new(false),
@@ -122,9 +124,11 @@ pub fn buffered_queue<T>(capacity: usize) -> (Producer<T>, Consumer<T>) {
         is_empty_signal: Condvar::new(),
         elements_processed: AtomicBool::new(false),
     };
-    let data = Arc::new(data);
+
+    let data = Arc::new(buffered_queue);
     let producer = Producer(data.clone());
     let consumer = Consumer(data);
+
     (producer, consumer)
 }
 
