@@ -90,7 +90,7 @@ pub struct BufferedQueue<T> {
     data: Mutex<VecDeque<T>>,
 
     /// represents the maximum number of elements allowed in the queue at a given time
-    capacity: usize,
+    pub capacity: usize,
 
     /// indicates whether the queue is full
     pub is_full: Mutex<bool>,
