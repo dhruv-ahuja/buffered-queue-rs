@@ -110,6 +110,9 @@ pub struct BufferedQueue<T> {
 
 /// returns Producer and Consumer halves for a BufferedQueue with the specified capacity
 pub fn buffered_queue<T>(capacity: usize) -> (Producer<T>, Consumer<T>) {
+    if capacity < 1 {
+        panic!("capacity cannot be lower than 1!");
+    }
     let data = BufferedQueue {
         data: Mutex::new(VecDeque::with_capacity(capacity)),
         capacity,
