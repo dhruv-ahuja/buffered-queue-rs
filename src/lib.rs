@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 /// Operation represents the performed operation on the queue -- push or pop
-enum Operation<'a> {
+pub enum Operation<'a> {
     Push { is_full_flag: MutexGuard<'a, bool> },
     Pop { is_empty_flag: MutexGuard<'a, bool> },
 }
@@ -33,8 +33,7 @@ impl<T> Producer<T> {
     #[allow(clippy::len_without_is_empty)]
     /// returns the queue's current length
     pub fn len(&self) -> usize {
-        let queue = self.0.data.lock().unwrap();
-        queue.len()
+        self.0.len()
     }
 }
 
@@ -74,8 +73,7 @@ impl<T> Consumer<T> {
     #[allow(clippy::len_without_is_empty)]
     /// returns the queue's current length
     pub fn len(&self) -> usize {
-        let queue = self.0.data.lock().unwrap();
-        queue.len()
+        self.0.len()
     }
 }
 
@@ -133,6 +131,12 @@ pub fn buffered_queue<T>(mut capacity: usize) -> (Producer<T>, Consumer<T>) {
 }
 
 impl<T> BufferedQueue<T> {
+    #[allow(clippy::len_without_is_empty)]
+    /// returns the queue's current length
+    fn len(&self) -> usize {
+        let queue = self.data.lock().unwrap();
+        queue.len()
+    }
     /// passes signals regarding the changes to tge queue's state, based on the recent operation type
     fn signal_queue_changes(&self, queue: MutexGuard<'_, VecDeque<T>>, operation: Operation) {
         let is_empty = queue.len() == 0;
