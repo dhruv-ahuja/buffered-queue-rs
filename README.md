@@ -2,14 +2,14 @@
 
 ## Introduction
 
-This is my attempt at a simple and very naive buffered/synced queue implementation in Rust. The base thread-safe queue implementation takes inspiration from and builds upon [RustBlockingQueue]([https://github.com/JimFawcett/RustBlockingQueue](https://github.com/JimFawcett/RustBlockingQueue)).
-
+This is my attempt at a simple and very naive buffered/synced queue implementation in Rust. The base thread-safe queue implementation takes inspiration from and builds upon [RustBlockingQueue](https://github.com/JimFawcett/RustBlockingQueue).
+An in-depth code explaination is available in [my blog post](
+https://dhruv-ahuja.github.io/posts/implementing-buffered-queue-in-rust/).
 ## Implementation
 
 The `BufferedQueue`  struct uses `Condvars`  to efficiently signal about and update the queue’s state, in a thread-safe manner. `push`  and `pop`  methods contain the core implementation logic, they modify the internal double-ended vector data structure, and call the `signal_queue_changes` method that checks the queue’s state and pushes updates depending on the recent operation performed – a push or a pop.
 
 An overview regarding the performance differences between the two synchronization mechanics is available [in this ChatGPT explaination](https://chat.openai.com/share/890e7c2d-37a9-45dc-966b-f42ed4ddad96 "https://chat.openai.com/share/890e7c2d-37a9-45dc-966b-f42ed4ddad96").
-
 
 
 ## Use-Case
