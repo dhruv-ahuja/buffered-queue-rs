@@ -3,7 +3,7 @@
 ## Introduction
 
 This is my attempt at a simple and very naive buffered/synced queue implementation in Rust. The base thread-safe queue implementation takes inspiration from and builds upon [RustBlockingQueue](https://github.com/JimFawcett/RustBlockingQueue).
-An in-depth code explaination is available in [my blog post](
+An in-depth code explanation is available in [my blog post](
 https://dhruv-ahuja.github.io/posts/implementing-buffered-queue-in-rust/).
 ## Implementation
 
